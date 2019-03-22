@@ -7,7 +7,7 @@ import (
     "encoding/json"
     "github.com/gorilla/websocket"
 
-    "../fetcher"
+    "proxy/fetcher"
 )
 
 // TODO: enforce enums

@@ -7,12 +7,12 @@ import (
 
     "github.com/gorilla/websocket"
 
-    "./proxy"
-    "./fetcher"
+    "proxy/handler"
+    "proxy/fetcher"
 )
 
 const PoolProxyUrl = "ws://localhost:8181/"
-const testContent = "http://localhost:8081/test/content.partial.html"
+const testContent = "http://localhost:8081/public/content.partial.html"
 
 var (
 	upgrader = &websocket.Upgrader{
