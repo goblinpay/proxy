@@ -16,6 +16,7 @@ func InitRequest(url string) (buffer []byte, err error) {
   return
 }
 
+// TODO: look into using bufio or bytes.Buffer
 func ReadChunk(buffer *[]byte) string {
   b := *buffer
   s := ChunkSize

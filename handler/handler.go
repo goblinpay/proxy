@@ -1,122 +1,128 @@
-package proxy
+package handler
 
 import (
-    "fmt" // TODO: change to log...
-    "errors"
-
+    "io"
     "encoding/json"
     "github.com/gorilla/websocket"
 
+    "proxy/util"
     "proxy/fetcher"
 )
 
-// TODO: enforce enums
-type PoolIdentifier string
+// TODO: read from config file, or convert to namespaced interface
 const (
-	Job PoolIdentifier = "job"
-	HashSolved PoolIdentifier = "hashsolved"
+	Addr = "41ynfGBUDbGJYYzz2jgSPG5mHrHJL4iMXEKh9EX6RfEiM9JuqHP66vuS2tRjYehJ3eRSt7FfoTdeVBfbvZ7Tesu1LKxioRU"
+	Pass = "x"
+	Agent = "Goblin"
 )
-type PoolMethod struct {
-	Identifier PoolIdentifier `json:"identifier"`
-}
 
-type ClientIdentifier string
-const (
-	Handshake ClientIdentifier = "handshake"
-	Solved ClientIdentifier = "solved"
-)
-type ClientMethod struct {
-	Identifier ClientIdentifier `json:"identifier"`
-}
-
-
-type ProxyHashSolved struct {
-	Identifier PoolIdentifier `json:"identifier"`
-	Chunk string 							`json:"chunk"`
-}
-
-
-func ReplicateWebsocketConnFromPool(dst, src *websocket.Conn, errc chan error, contentBuffer []byte) {
+func Client2Pool(dst io.Writer, src *websocket.Conn, session *util.Session, errc chan error) {
+	// json.Encode adds a \n
+	enc := json.NewEncoder(dst)
 	for {
-		msgType, msg, err := src.ReadMessage()
-		if err != nil {
-			m := websocket.FormatCloseMessage(websocket.CloseNormalClosure, fmt.Sprintf("%v", err))
-			if e, ok := err.(*websocket.CloseError); ok {
-				if e.Code != websocket.CloseNoStatusReceived {
-					m = websocket.FormatCloseMessage(e.Code, e.Text)
-				}
-			}
+		var (
+			inbound MessageFromClient
+			outbound MessageToServer
+		)
+
+		if err := src.ReadJSON(&inbound); err != nil {
+			// client is offline, or JSON decode error
 			errc <- err
-			dst.WriteMessage(websocket.CloseMessage, m)
 			break
 		}
 
-		var method PoolMethod
-		err = json.Unmarshal(msg, &method)
-		if err != nil {
-			fmt.Println("json.Unmarshal error:", err)
+		switch inbound.Type {
+		case ClientTypeAuth:
+			outbound.Method = ServerMethodLogin
+			outbound.Params = ServerParamsLogin{
+				Login: Addr,
+				Pass: Pass,
+				Agent: Agent,
+			}
+		case ClientTypeSubmit:
+			outbound.Method = ServerMethodSubmit
+			outbound.Params = ServerParamsSubmit{
+				Id: session.WorkerId,
+				SubmitParams: inbound.Params.SubmitParams,
+			}
+		default:
+			// unexpected message
+			// TODO: handle error
 		}
+		outbound.Id = session.Pid
 
-		if method.Identifier == HashSolved {
-			var proxyResponse ProxyHashSolved
-
-			proxyResponse.Identifier = HashSolved
-			proxyResponse.Chunk = fetcher.ReadChunk(&contentBuffer)
-
-			msg, err := json.Marshal(proxyResponse)
-			if err != nil {
-				fmt.Println("json.Marshal error:", err)
-			}
-			
-			err = dst.WriteMessage(msgType, msg)
-			if err != nil {
-				errc <- err
-				break
-			}
-
-			if len(contentBuffer) == 0 { // we are actually done reading content, close connection
-				errc <- errors.New("Done reading.")
-				break
-			}
-		} else {
-			// just regular proxying
-			err = dst.WriteMessage(msgType, msg)
-			if err != nil {
-				errc <- err
-				break
-			}
-		}
-	}
-}
-
-func ReplicateWebsocketConnFromClient(dst, src *websocket.Conn, errc chan error) {
-	for {
-		msgType, msg, err := src.ReadMessage()
-		if err != nil {
-			m := websocket.FormatCloseMessage(websocket.CloseNormalClosure, fmt.Sprintf("%v", err))
-			if e, ok := err.(*websocket.CloseError); ok {
-				if e.Code != websocket.CloseNoStatusReceived {
-					m = websocket.FormatCloseMessage(e.Code, e.Text)
-				}
-			}
-			errc <- err
-			dst.WriteMessage(websocket.CloseMessage, m)
-			break
-		}
-
-		err = dst.WriteMessage(msgType, msg)
-		if err != nil {
+		if err := enc.Encode(&outbound); err != nil {
+			// pool no longer receiving data, or JSON encode error
 			errc <- err
 			break
 		}
 	}
 }
 
-// parse JSON
-// identifier:
-// - client:
-//   - handshake (pass on, later will add params)
-//   - solved (pass on)
-// - pool:
-//   - job (pass on)
-//   - hashsolved (pass on but add content)
+func Pool2Client(dst *websocket.Conn, src io.Reader, session *util.Session, errc chan error) {
+	// reads newline-deliminated JSON from TCP connection with pool
+	dec := json.NewDecoder(src)
+	for {
+		var (
+			inbound MessageFromServer
+			outbound []MessageToClient
+		)
+
+		if err := dec.Decode(&inbound); err != nil {
+			// pool closed connection, or JSON decode error
+			errc <- err
+			break
+		}
+
+		switch {
+		case inbound.Id == session.Pid && inbound.Result != nil && inbound.Result.Id != "":
+			// authed & job
+			session.WorkerId = inbound.Result.Id
+			outbound = []MessageToClient{
+				{Type: ClientTypeAuthed, Params: MessageToClientParams{Hashes: &session.Accepted,},},
+				{Type: ClientTypeJob, Params: inbound.Result.Job,},
+			}
+		case inbound.Id == session.Pid && inbound.Result != nil && inbound.Result.Status == ServerStatusOk:
+			// hash accepted
+			session.Accepted++
+			outbound = []MessageToClient{
+				{Type: ClientTypeHashAccepted, Params: MessageToClientParams{
+					Hashes: &session.Accepted,
+					Chunk: fetcher.ReadChunk(&session.Content),
+				},},
+			}
+		case inbound.Method == ServerMethodJob:
+			outbound = []MessageToClient{
+				{Type: ClientTypeJob, Params: inbound.Params,},
+			}
+		case inbound.Id == session.Pid && inbound.Error != nil && inbound.Error.Code == -1:
+			outbound = []MessageToClient{
+				{Type: ClientTypeError, Params: MessageToClientParams{Error: inbound.Error.Message,},},
+			}
+		case inbound.Id == session.Pid && inbound.Error != nil && inbound.Error.Code != -1:
+			outbound = []MessageToClient{
+				{Type: ClientTypeBanned, Params: MessageToClientParams{Banned: session.Pid,},},
+			}
+		default:
+			// unexpected message
+			// TODO: handle error
+		}
+
+		// write outbound websocket messages
+		for _, msg := range outbound {
+
+			if err := dst.WriteJSON(&msg); err != nil {
+				// client no longer receiving data, or JSON encode error
+				errc <- err
+				break
+			}
+		}
+
+		// if we are done reading content
+		if len(session.Content) == 0 {
+			// close pool and client connection
+			errc <- nil
+			break
+		}
+	}
+}
