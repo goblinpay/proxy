@@ -8,6 +8,7 @@ import (
     "log"
     "net"
     "net/http"
+    "time"
 
     "github.com/gorilla/websocket"
 
@@ -88,7 +89,15 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	var messageFormat string
 	select {
 	case err = <-errClient:
-		messageFormat = "Pool2Client: Error when forwarding from pool to client: %v"
+		if err != nil {
+			messageFormat = "Pool2Client: Error when forwarding from pool to client: %v"
+		} else {
+			connClient.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+				time.Now().Add(time.Duration(10)*time.Second))
+			// TODO: should introduce a delay as this races with the defer, should conserve order?
+		}
 	case err = <-errPool:
 		messageFormat = "Client2Pool: Error when forwarding from client to pool: %v"
 

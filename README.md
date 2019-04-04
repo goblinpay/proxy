@@ -1,2 +1,3 @@
 - add config file
 - add uid/uip logging, found
+- improve performance/memory: use pointers appropriately
