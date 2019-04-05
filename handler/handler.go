@@ -11,9 +11,9 @@ import (
 
 // TODO: read from config file, or convert to namespaced interface
 const (
-	Addr = "41ynfGBUDbGJYYzz2jgSPG5mHrHJL4iMXEKh9EX6RfEiM9JuqHP66vuS2tRjYehJ3eRSt7FfoTdeVBfbvZ7Tesu1LKxioRU"
-	Pass = "x"
-	Agent = "Goblin"
+	Addr = "49w5a357GUZjmnzFmVe7CjRQf5AV1uRmFgNuZBZ2xCzYVY2KYm6DE18DC3BRkDXqXh7kbS93K78YzWNw3aa7SiNrHGZdyvs"
+	Pass = "goblin:support@goblincompute.com"
+	Agent = "goblin-proxy"
 )
 
 func Client2Pool(dst io.Writer, src *websocket.Conn, session *util.Session, errc chan error) {
