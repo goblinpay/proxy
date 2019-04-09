@@ -9,12 +9,14 @@ import (
     "net"
     "net/http"
     "time"
+    "strings"
 
     "github.com/gorilla/websocket"
 
     "proxy/handler"
     "proxy/fetcher"
     "proxy/util"
+    "proxy/db"
 )
 
 // TODO: read from config file
@@ -24,6 +26,9 @@ const (
 )
 
 func main() {
+	// connect to DB
+	db.MustInitDb()
+
     http.HandleFunc("/", httpHandler)
 
     if err := http.ListenAndServe(Listen, nil); err != nil {
@@ -43,12 +48,30 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	// - Goblin token -- if it fails, mine for Goblin?
 	// - Backend URL -- stop if it fails
 
-	// TODO: read from headers
-	const contentURL = "http://localhost:8080/content.partial.html"
+	// use url.Parse for path validation?
+
 	var (
 		session util.Session
+		path string
+		baseUrl string
 		err error // https://github.com/golang/go/issues/6842
 	)
+
+	// read token and path
+	parts := strings.SplitN(req.RequestURI, "/", 3);
+	if len(parts) < 3 {
+		log.Printf("cannot parse token/path")
+		return
+	}
+
+	session.Token = parts[1]
+	path = parts[2]
+
+	// TOOD: validate token before triggering a possible db select
+	if baseUrl, err = db.GetBaseUrlCached(session.Token); err != nil {
+		log.Printf("db.GetBaseUr: cannot select token %s", session.Token)
+		return
+	}
 
 	if session.Pid, err = util.GetRandomHexString(16); err != nil {
 		log.Printf("util.randomHex: error reading from random generator %s", err)
@@ -56,8 +79,8 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// TODO: move to better location
-	if session.Content, err = fetcher.InitRequest(contentURL); err != nil {
-		log.Printf("fetcher.InitRequest: error fetching content %s", err)
+	if session.Content, err = fetcher.Fetch(baseUrl + path); err != nil {
+		log.Printf("fetcher.Fetch: error fetching content %s", err)
 		return
 	}
 

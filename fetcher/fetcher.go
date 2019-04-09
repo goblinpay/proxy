@@ -3,16 +3,22 @@ package fetcher
 import (
     "net/http"
     "io/ioutil"
+    "github.com/gregjones/httpcache" // check perf/doc, use string keys which cause GC overhead
 )
 
 const ChunkSize = 3*1000 // read ~5kB at a time
 
-func InitRequest(url string) (buffer []byte, err error) {
-  resp, err := http.Get(url)
+var tp = httpcache.NewMemoryCacheTransport()
+var client = &http.Client{Transport: tp}
+
+func Fetch(url string) (body []byte, err error) {
+  resp, err := client.Get(url)
   if err != nil {
+    // handle error
     return
   }
-  buffer, err = ioutil.ReadAll(resp.Body)
+  defer resp.Body.Close()
+  body, err = ioutil.ReadAll(resp.Body) // anything more efficient that avoids a copy if cached?
   return
 }
 
