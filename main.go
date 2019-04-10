@@ -29,6 +29,9 @@ func main() {
 	// connect to DB
 	db.MustInitDb()
 
+	// init pooled DB increments
+	//db.StartCoutingPool()
+
     http.HandleFunc("/", httpHandler)
 
     if err := http.ListenAndServe(Listen, nil); err != nil {
@@ -52,8 +55,6 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 
 	var (
 		session util.Session
-		path string
-		baseUrl string
 		err error // https://github.com/golang/go/issues/6842
 	)
 
@@ -64,12 +65,12 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	session.Token = parts[1]
-	path = parts[2]
+	token := parts[1]
+	path := parts[2]
 
 	// TOOD: validate token before triggering a possible db select
-	if baseUrl, err = db.GetBaseUrlCached(session.Token); err != nil {
-		log.Printf("db.GetBaseUr: cannot select token %s", session.Token)
+	if session.TokenSession, err = db.GetTokenSession(token); err != nil {
+		log.Printf("db.GetTokenSession: cannot retrieve token session %s", token)
 		return
 	}
 
@@ -79,7 +80,7 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// TODO: move to better location
-	if session.Content, err = fetcher.Fetch(baseUrl + path); err != nil {
+	if session.Content, err = fetcher.Fetch(session.TokenSession.BaseUrl + path); err != nil {
 		log.Printf("fetcher.Fetch: error fetching content %s", err)
 		return
 	}

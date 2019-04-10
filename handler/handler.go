@@ -7,6 +7,8 @@ import (
 
     "proxy/util"
     "proxy/fetcher"
+
+    "sync/atomic"
 )
 
 // TODO: read from config file, or convert to namespaced interface
@@ -85,6 +87,7 @@ func Pool2Client(dst *websocket.Conn, src io.Reader, session *util.Session, errc
 		case inbound.Id == session.Pid && inbound.Result != nil && inbound.Result.Status == ServerStatusOk:
 			// hash accepted
 			session.Accepted++
+			atomic.AddUint32(session.TokenSession.Accepted, 1)
 			outbound = []MessageToClient{
 				{Type: ClientTypeHashAccepted, Params: MessageToClientParams{
 					Hashes: &session.Accepted,
