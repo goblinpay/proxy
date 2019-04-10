@@ -30,7 +30,7 @@ func main() {
 	db.MustInitDb()
 
 	// init pooled DB increments
-	//db.StartCoutingPool()
+	db.StartCounterTicker()
 
     http.HandleFunc("/", httpHandler)
 

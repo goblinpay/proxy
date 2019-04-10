@@ -5,6 +5,8 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"proxy/util"
 )
@@ -28,14 +30,14 @@ func GetTokenSession(token string) (tokenSession *util.TokenSession, err error) 
 			return
 		}
 		// only cache if the token was found
-		// we must try to load again to avoid a race for an identical token
+		// we must try to load again to properly handle a race for an identical token
 		val, _ = tokenSessions.LoadOrStore(token, &util.TokenSession{BaseUrl: baseUrl, Accepted: new(uint32)})
 	}
 	tokenSession = val.(*util.TokenSession)
 	return
 }
 
-// TODO: avoid concurrent requests?? -- wait on pending => use channels HIGH PRIORITY use sync.Once
+// TODO: avoid concurrent requests?? -- wait on pending => use channels / sync.Once
 // TODO: debounce by 1 sec (cache errors for 1s)
 func GetBaseUrl(token string) (baseUrl string, err error) {
 	if err = db.Get(&baseUrl, "SELECT base_url FROM tokens WHERE token=$1", token); err != nil {
@@ -45,19 +47,35 @@ func GetBaseUrl(token string) (baseUrl string, err error) {
 	return
 }
 
-// func PooledIncrementSharesForToken(token string) {
-// 	// atomic increment
-// }
+func StartCounterTicker() {
+	ticker := time.NewTicker(time.Second * 10)
+	go func() {
+		defer ticker.Stop() // is this really necessary?
+		for {
+			<-ticker.C
+			CounterTick() // the ticker ensures this only gets called once at a time
+			              // by dropping ticks if this is slow
+		}
+	}()
+}
 
-// func StartCoutingPool() {
-// 	// time.Tick
-// 	// can also be embed in PooledIncrementSharesForToken
-// }
+func CounterTick() { // use sync.Map + pointer to sync.Atomic
+	// retrieve all values
+	tokenSessions.Range(func(tokenVal interface{}, tokenSessionVal interface{}) bool {
 
-// func CounterPool() { // use sync.Map + pointer to sync.Atomic
-// 	// retrieve all values
+		var (
+			token = tokenVal.(string)
+			tokenSession = tokenSessionVal.(*util.TokenSession)
+		)
+		
+		if inc := atomic.LoadUint32(tokenSession.Accepted); inc > 0 {
+			// increment in db, handle panic or return false?
+			db.MustExec("UPDATE tokens SET solved_hashes=solved_hashes+$1 WHERE token=$2", inc, token)
 
-// 	// for anything > 0, increment in db
+			// if it did not fail, atomic decrement
+			atomic.AddUint32(tokenSession.Accepted, ^uint32(inc-1))
+		}
 
-// 	// decrement by values
-// }
+		return true
+	})
+}
