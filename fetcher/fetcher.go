@@ -6,7 +6,7 @@ import (
     "github.com/gregjones/httpcache" // check perf/doc, use string keys which cause GC overhead
 )
 
-const ChunkSize = 3*1000 // read ~5kB at a time
+const ChunkSize = 3*1024 // read ~5kB at a time
 
 var tp = httpcache.NewMemoryCacheTransport()
 var client = &http.Client{Transport: tp}

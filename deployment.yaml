@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: proxy
+  template:
+    metadata:
+      labels:
+        run: proxy
+    spec:
+      containers:
+      - name: proxy
+        image: gcr.io/goblin-proxy-238316/proxy:0.0@sha256:57defaa2f4fd8a1880a6f6a2ba6a37b2c22a2a481adc0706acfbf229a173377d
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PROXY_ENV
+          value: "prod"
+        - name: SECRET_DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: db_pass
+      - name: cloudsql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.11
+        command: ["/cloud_sql_proxy",
+                  "-instances=goblin-services:us-central1:services-db=tcp:5432",
+                  "-credential_file=/secrets/cloudsql/credentials.json"]
+        securityContext:
+          runAsUser: 2  # non-root user
+          allowPrivilegeEscalation: false
+        volumeMounts:
+          - name: cloudsql-instance-credentials-volume
+            mountPath: /secrets/cloudsql
+            readOnly: true
+      volumes:
+      - name: cloudsql-instance-credentials-volume
+        secret:
+          secretName: cloudsql-instance-credentials

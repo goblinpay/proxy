@@ -9,14 +9,30 @@ import (
 	"time"
 
 	"proxy/util"
+
+	"os"
+	"fmt"
 )
 
-var tokenSessions sync.Map
-
-var db *sqlx.DB
+var (
+	tokenSessions sync.Map
+	db *sqlx.DB
+	env = os.Getenv("PROXY_ENV")
+)
 
 func MustInitDb() {
-	db = sqlx.MustConnect("postgres", "user=tarik dbname=goblin sslmode=disable")
+	var (
+		dbHost = "localhost" // also used for Cloud SQL Proxy
+		dbPass = "disable"
+	)
+
+	if env == "prod" {
+		dbPass = os.Getenv("SECRET_DB_PASS")
+	}
+		
+	db = sqlx.MustConnect("postgres", fmt.Sprintf("host=%s dbname=goblin user=proxy password=%s sslmode=disable",
+		dbHost,
+		dbPass))
 }
 
 func GetTokenSession(token string) (tokenSession *util.TokenSession, err error) {

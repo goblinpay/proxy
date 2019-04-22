@@ -10,6 +10,8 @@ import (
     "net/http"
     "time"
     "strings"
+    "os"
+    "fmt"
 
     "github.com/gorilla/websocket"
 
@@ -21,7 +23,6 @@ import (
 
 // TODO: read from config file
 const (
-	Listen = ":8181"
 	Pool = "gulf.moneroocean.stream:80" // 100 difficulty, TODO: use secure, on port 443?
 )
 
@@ -34,7 +35,14 @@ func main() {
 
     http.HandleFunc("/", httpHandler)
 
-    if err := http.ListenAndServe(Listen, nil); err != nil {
+    port := os.Getenv("PORT")
+    if port == "" {
+		port = "8181"
+		log.Printf("Defaulting to port %s", port)
+    }
+
+    log.Printf("Listening on port %s", port)
+    if err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil); err != nil {
         log.Fatal("ListenAndServe:", err)
     }
 }
@@ -62,6 +70,7 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	parts := strings.SplitN(req.RequestURI, "/", 3);
 	if len(parts) < 3 {
 		log.Printf("cannot parse token/path")
+		rw.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -71,17 +80,20 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	// TOOD: validate token before triggering a possible db select
 	if session.TokenSession, err = db.GetTokenSession(token); err != nil {
 		log.Printf("db.GetTokenSession: cannot retrieve token session %s", token)
+		rw.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	if session.Pid, err = util.GetRandomHexString(16); err != nil {
 		log.Printf("util.randomHex: error reading from random generator %s", err)
+		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	// TODO: move to better location
 	if session.Content, err = fetcher.Fetch(session.TokenSession.BaseUrl + path); err != nil {
 		log.Printf("fetcher.Fetch: error fetching content %s", err)
+		rw.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -89,6 +101,7 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	connPool, err := net.Dial("tcp", Pool)
 	if err != nil {
 		log.Printf("net.Dial: couldn't dial to pool %s", err)
+		rw.WriteHeader(http.StatusBadGateway)
 		return
 	}
 	defer connPool.Close()

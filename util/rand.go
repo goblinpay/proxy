@@ -1,3 +1,5 @@
+// TODO: use external lib or gopath
+
 package util
 
 import (
