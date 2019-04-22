@@ -2,8 +2,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: proxy-service
+  annotations:
+    beta.cloud.google.com/backend-config: '{"ports": {"80":"proxy-backendconfig"}}'
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
     run: proxy
   ports:

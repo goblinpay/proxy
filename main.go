@@ -61,6 +61,12 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 
 	// use url.Parse for path validation?
 
+	// health check required by kube's ingress
+	if req.RequestURI == "/" {
+		rw.WriteHeader(http.StatusOK)
+		return
+	}
+
 	var (
 		session util.Session
 		err error // https://github.com/golang/go/issues/6842

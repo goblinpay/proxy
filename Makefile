@@ -1,3 +1,6 @@
+cluster:
+	kubectl apply -Rf kubernetes/
+
 build:
 	docker build -t goblin/proxy .
 

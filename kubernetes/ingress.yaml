@@ -1,0 +1,12 @@
+# https://cloud.google.com/kubernetes-engine/docs/concepts/ingress#health_checks
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: proxy-ingress
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+    networking.gke.io/managed-certificates: proxy-certificate
+spec:
+  backend:
+    serviceName: proxy-service
+    servicePort: 80
