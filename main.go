@@ -23,7 +23,7 @@ import (
 
 // TODO: read from config file
 const (
-	Pool = "gulf.moneroocean.stream:80" // 100 difficulty, TODO: use secure, on port 443?
+	Pool = "gulf.moneroocean.stream:443" // 100 difficulty, TODO: use secure, on port 443?
 )
 
 func main() {
@@ -104,7 +104,7 @@ func httpHandler(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// open TCP socket
-	connPool, err := net.Dial("tcp", Pool)
+	connPool, err := net.DialTLS("tcp", Pool)
 	if err != nil {
 		log.Printf("net.Dial: couldn't dial to pool %s", err)
 		rw.WriteHeader(http.StatusBadGateway)

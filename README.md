@@ -52,6 +52,12 @@ kubectl get all
 kubectl get pods -l run=proxy-deployment -o wide
 ```
 
+### logs
+
+```
+kubectl logs deployment/proxy-deployment proxy
+```
+
 ## deploy
 
 ```

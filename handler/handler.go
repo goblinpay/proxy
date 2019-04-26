@@ -9,6 +9,10 @@ import (
     "proxy/fetcher"
 
     "sync/atomic"
+
+    // TODO: move to a binary serialization format
+    "encoding/base64"
+    "bufio"
 )
 
 // TODO: read from config file, or convert to namespaced interface
@@ -18,17 +22,51 @@ const (
 	Agent = "goblin-proxy"
 )
 
+// TODO: write JSON + b64 encoder/scanners
+
 func Client2Pool(dst io.Writer, src *websocket.Conn, session *util.Session, errc chan error) {
+	
 	// json.Encode adds a \n
 	enc := json.NewEncoder(dst)
+
+	// decoding
+	pr, pw := io.Pipe() // should handle pw.Close() at break?
+	jDec := json.NewDecoder(pr)
+
+	// loop
 	for {
 		var (
 			inbound MessageFromClient
 			outbound MessageToServer
 		)
 
-		if err := src.ReadJSON(&inbound); err != nil {
-			// client is offline, or JSON decode error
+		_, r, err := src.NextReader() // messageType is known (websocket.TextMessage)
+		if err != nil {
+			// client is offline
+			errc <- err
+			break
+		}
+
+		copyChan := make(chan error)
+		go func(errChan chan error) {
+			// could be moved up with ReadMessage+buffio
+			bDec := base64.NewDecoder(base64.StdEncoding, r)
+
+			if _, err := io.Copy(pw, bDec); err != nil {
+				// base64 decode error
+				errChan <- err
+				return
+			}
+			errChan <- nil
+		}(copyChan)
+
+		if err := jDec.Decode(&inbound); err != nil {
+			// JSON decode error
+			errc <- err
+			break
+		}
+
+		if err := <- copyChan; err != nil {
 			errc <- err
 			break
 		}
@@ -62,8 +100,16 @@ func Client2Pool(dst io.Writer, src *websocket.Conn, session *util.Session, errc
 }
 
 func Pool2Client(dst *websocket.Conn, src io.Reader, session *util.Session, errc chan error) {
+	
 	// reads newline-deliminated JSON from TCP connection with pool
 	dec := json.NewDecoder(src)
+
+	// encoding
+	pr, pw := io.Pipe() // should handle pw.Close() at break?
+	jEnc := json.NewEncoder(pw)
+	jEncScan := bufio.NewScanner(pr)
+
+	// loop
 	for {
 		var (
 			inbound MessageFromServer
@@ -114,8 +160,49 @@ func Pool2Client(dst *websocket.Conn, src io.Reader, session *util.Session, errc
 		// write outbound websocket messages
 		for _, msg := range outbound {
 
-			if err := dst.WriteJSON(&msg); err != nil {
-				// client no longer receiving data, or JSON encode error
+			w, err := dst.NextWriter(websocket.TextMessage)
+			if err != nil {
+				// client no longer receiving data
+				errc <- err
+				break
+			}
+
+			copyChan := make(chan error)
+			go func(errChan chan error) {
+				// could be moved up with WriteMessage+buffio
+				bEnc := base64.NewEncoder(base64.StdEncoding, w)
+
+				// TODO: handle error for Scan() method
+				jEncScan.Scan()
+
+				if _, err := bEnc.Write(jEncScan.Bytes()); err != nil {
+					// base64 encode error
+					errChan <- err
+					return
+				}
+
+				if err := bEnc.Close(); err != nil {
+					// base64 encode error?
+					errChan <- err
+					return
+				}
+
+				if err := w.Close(); err != nil {
+					// client no longer receiving data?
+					errChan <- err
+					return
+				}
+
+				errChan <- nil
+			}(copyChan)
+
+			if err := jEnc.Encode(&msg); err != nil {
+				// JSON encode error
+				errc <- err
+				break
+			}
+
+			if err := <- copyChan; err != nil {
 				errc <- err
 				break
 			}

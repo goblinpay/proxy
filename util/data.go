@@ -6,6 +6,7 @@ type TokenSession struct {
 }
 
 type Session struct {
+	// TODO: save uid??
   TokenSession *TokenSession
   Pid string // generated
   Content []byte
