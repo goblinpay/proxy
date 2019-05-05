@@ -63,16 +63,36 @@ func GetBaseUrl(token string) (baseUrl string, err error) {
 	return
 }
 
+// TODO: move counter to package
+var stopTicker = make(chan chan bool)
+
 func StartCounterTicker() {
 	ticker := time.NewTicker(time.Second * 10)
 	go func() {
-		defer ticker.Stop() // is this really necessary?
 		for {
-			<-ticker.C
-			CounterTick() // the ticker ensures this only gets called once at a time
-			              // by dropping ticks if this is slow
+			select {
+				case <-ticker.C:
+					CounterTick() // the ticker ensures this only gets called once at a time
+					              // by dropping ticks if this is slow
+				case done := <-stopTicker:
+					// stop the ticker, then final flush
+					ticker.Stop()
+					CounterTick()
+					done <- true
+					return
+			}
 		}
 	}()
+}
+
+func ShutdownCounterTicker() {
+
+	var flushDone = make(chan bool)
+
+	// ask the ticker to stop
+	stopTicker <- flushDone
+	// blocks until the final flush is done
+	<-flushDone
 }
 
 func CounterTick() { // use sync.Map + pointer to sync.Atomic

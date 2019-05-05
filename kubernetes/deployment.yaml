@@ -48,3 +48,4 @@ spec:
       - name: cloudsql-instance-credentials-volume
         secret:
           secretName: cloudsql-instance-credentials
+      terminationGracePeriodSeconds: 1200 # 20 min
