@@ -1,35 +1,13 @@
 # Goblin proxy
 
+## Prerequisites
+
+`envsubst` (`(brew install gettext)`, and link or put in PATH)
+
 ## running locally
 
 ```
 go run proxy
-```
-
-## building container
-
-```
-docker build -t goblin/proxy .
-```
-
-## running container
-
-```
-docker run -it -p 8181:8080 goblin/proxy
-```
-
-## tag & push image
-
-```
-docker tag goblin/proxy gcr.io/goblin-proxy-238316/proxy:0.0
-docker push gcr.io/goblin-proxy-238316/proxy:0.0
-```
-
-## remote build & push
-
-```
-gcloud config set project goblin-proxy-238316
-gcloud builds submit --tag gcr.io/goblin-proxy-238316/proxy
 ```
 
 ## deploy setup

@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: proxy
-        image: gcr.io/goblin-proxy-238316/proxy:0.0@sha256:33c89c15758a010b919c53ea1d85724bb0ce3fdf22c3307ea3fdbf768b889fde
+        image: gcr.io/goblin-proxy-238316/proxy:0.0@${DIGEST}
         ports:
         - containerPort: 8080
         # https://github.com/kubernetes/kubernetes/issues/20555
